@@ -11,7 +11,6 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'URL is required' }, { status: 400 });
     }
 
-    // 1. Fetch the HTML
     const response = await fetch(url, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (compatible; MyScraper/1.0)',
@@ -24,40 +23,44 @@ export async function POST(req: Request) {
 
     const html = await response.text();
     const dom = new JSDOM(html, { url });
-    
-    // 2. Parse with Readability
-    // We get the HTML content now, not just text, so we can preserve structure
     const reader = new Readability(dom.window.document);
     const article = reader.parse();
 
-    // 3. Format Text Manually with Cheerio
     let formattedText = '';
     
     if (article && article.content) {
-      // Load the "clean" HTML from Readability into Cheerio
       const $ = cheerio.load(article.content);
       
-      // Select block elements that should trigger a new line
-      $('h1, h2, h3, h4, h5, p, li, blockquote, pre').each((_, element) => {
-        let text = $(element).text().trim();
+      // Define the block tags we care about
+      const selector = 'h1, h2, h3, h4, h5, p, li, blockquote, pre';
+
+      $(selector).each((_, element) => {
+        const $el = $(element);
+
+        // --- FIX FOR DUPLICATES ---
+        // If this element is INSIDE another block we are already grabbing, skip it.
+        // Example: Skip <p> if it's inside an <li>
+        if ($el.parents(selector).length > 0) {
+            return; 
+        }
+
+        let text = $el.text().replace(/\s+/g, ' ').trim();
         
         if (text.length > 0) {
           // Add bullet point for list items
           if (element.tagName === 'li') {
             text = '• ' + text;
           }
-          // Add a "Label" for headers so they stand out in the text
+          // Uppercase Headers
           if (['h1', 'h2', 'h3'].includes(element.tagName)) {
              text = text.toUpperCase();
           }
 
-          // Force TWO newlines after every block
           formattedText += text + '\n\n';
         }
       });
     }
 
-    // 4. Find Links (Standard logic)
     const $original = cheerio.load(html);
     const links: string[] = [];
     const baseUrlObj = new URL(url);
@@ -76,7 +79,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({
       title: article?.title || 'No Title',
-      content: formattedText, // Now contains explicit \n\n breaks
+      content: formattedText,
       links: Array.from(new Set(links)),
     });
 
