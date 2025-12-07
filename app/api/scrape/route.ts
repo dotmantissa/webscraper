@@ -23,37 +23,60 @@ export async function POST(req: Request) {
     }
 
     const html = await response.text();
-
-    // 2. Parse with Readability (to get clean text)
     const dom = new JSDOM(html, { url });
+    
+    // 2. Parse with Readability
+    // We get the HTML content now, not just text, so we can preserve structure
     const reader = new Readability(dom.window.document);
     const article = reader.parse();
 
-    // 3. Parse with Cheerio (to find other links)
-    const $ = cheerio.load(html);
+    // 3. Format Text Manually with Cheerio
+    let formattedText = '';
+    
+    if (article && article.content) {
+      // Load the "clean" HTML from Readability into Cheerio
+      const $ = cheerio.load(article.content);
+      
+      // Select block elements that should trigger a new line
+      $('h1, h2, h3, h4, h5, p, li, blockquote, pre').each((_, element) => {
+        let text = $(element).text().trim();
+        
+        if (text.length > 0) {
+          // Add bullet point for list items
+          if (element.tagName === 'li') {
+            text = '• ' + text;
+          }
+          // Add a "Label" for headers so they stand out in the text
+          if (['h1', 'h2', 'h3'].includes(element.tagName)) {
+             text = text.toUpperCase();
+          }
+
+          // Force TWO newlines after every block
+          formattedText += text + '\n\n';
+        }
+      });
+    }
+
+    // 4. Find Links (Standard logic)
+    const $original = cheerio.load(html);
     const links: string[] = [];
     const baseUrlObj = new URL(url);
 
-    $('a').each((_, element) => {
-      const href = $(element).attr('href');
+    $original('a').each((_, element) => {
+      const href = $original(element).attr('href');
       if (href) {
         try {
-          // Resolve relative URLs
           const fullUrl = new URL(href, url).toString();
-          // Only keep links from the same domain
           if (new URL(fullUrl).hostname === baseUrlObj.hostname) {
             links.push(fullUrl);
           }
-        } catch (e) {
-          // Ignore invalid URLs
-        }
+        } catch (e) {}
       }
     });
 
     return NextResponse.json({
       title: article?.title || 'No Title',
-      content: article?.textContent || '', 
-      // FIX IS HERE: Use Array.from instead of ...spread
+      content: formattedText, // Now contains explicit \n\n breaks
       links: Array.from(new Set(links)),
     });
 
