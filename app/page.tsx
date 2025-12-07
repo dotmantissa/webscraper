@@ -39,6 +39,7 @@ export default function Home() {
 
         if (res.ok) {
           const data = await res.json();
+          // Only save if content is substantial
           if (data.content?.length > 100) {
             results.push({ url: current, title: data.title, content: data.content });
             visited.add(current);
@@ -52,7 +53,7 @@ export default function Home() {
           log(`❌ Error fetching page`);
         }
         
-        await new Promise(r => setTimeout(r, 500)); // Be polite
+        await new Promise(r => setTimeout(r, 500)); 
       }
 
       log(`💾 Generating PDF...`);
@@ -60,77 +61,140 @@ export default function Home() {
 
     } catch (e) {
       log('❌ Critical Error');
+      console.error(e);
     }
     setLoading(false);
   };
 
   const createPDF = (pages: PageData[]) => {
     const doc = new jsPDF();
-    const margin = 10;
-    const width = doc.internal.pageSize.getWidth() - (margin * 2);
-    let y = 10;
+    
+    // Formatting Constants
+    const margin = 20;
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const contentWidth = pageWidth - (margin * 2);
+    const centerX = pageWidth / 2;
+
+    let y = margin;
 
     pages.forEach((p, i) => {
-      if (i > 0) { doc.addPage(); y = 10; }
+      // Add new page for every article (except the first one)
+      if (i > 0) { 
+        doc.addPage(); 
+        y = margin; 
+      }
       
-      doc.setFontSize(16).setFont('helvetica', 'bold');
-      const title = doc.splitTextToSize(p.title, width);
-      doc.text(title, margin, y);
-      y += (title.length * 7) + 5;
+      // --- HEADER SECTION ---
 
-      doc.setFontSize(10).setTextColor(100);
-      doc.text(p.url, margin, y);
+      // Title (Centered, Bold, Larger)
+      doc.setFontSize(18);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(0, 0, 0); // Black
+      
+      const titleLines = doc.splitTextToSize(p.title, contentWidth);
+      doc.text(titleLines, centerX, y, { align: 'center' });
+      y += (titleLines.length * 8) + 2;
+
+      // Link (Centered, Italic, Grey, Smaller)
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'italic');
+      doc.setTextColor(100, 100, 100); // Grey
+      doc.text(p.url, centerX, y, { align: 'center' });
       y += 10;
 
-      doc.setFontSize(12).setTextColor(0).setFont('helvetica', 'normal');
-      const text = p.content.replace(/\n\s*\n/g, '\n\n');
-      const lines = doc.splitTextToSize(text, width);
+      // Divider Line
+      doc.setDrawColor(200, 200, 200);
+      doc.line(margin, y, pageWidth - margin, y);
+      y += 15;
+
+      // --- BODY CONTENT SECTION ---
       
-      lines.forEach((line: string) => {
-        if (y > 280) { doc.addPage(); y = 10; }
-        doc.text(line, margin, y);
-        y += 6;
+      doc.setFontSize(11); // Standard reading size
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(0, 0, 0);
+
+      // 1. Clean the text: Remove carriage returns, fix double spaces
+      const rawText = p.content.replace(/\r/g, '').replace(/  +/g, ' ');
+
+      // 2. Split by double newline to detect "Paragraphs"
+      const paragraphs = rawText.split(/\n\s*\n/);
+
+      paragraphs.forEach((paragraph) => {
+        // Skip empty paragraphs
+        if (!paragraph.trim()) return;
+
+        // Split paragraph into lines that fit the width
+        const lines = doc.splitTextToSize(paragraph, contentWidth);
+
+        // Check if this paragraph fits on the page
+        const paragraphHeight = lines.length * 6; // 6 is line height
+        
+        if (y + paragraphHeight > pageHeight - margin) {
+          doc.addPage();
+          y = margin;
+        }
+
+        // Write the lines
+        doc.text(lines, margin, y);
+        
+        // Add height of text + extra spacing for the next paragraph
+        y += paragraphHeight + 4; 
       });
+
     });
 
-    doc.save(`${filename}.pdf`);
+    const safeFilename = filename.replace(/[^a-z0-9]/gi, '-').toLowerCase();
+    doc.save(`${safeFilename}.pdf`);
   };
 
   return (
     <main className="min-h-screen p-8 bg-gray-50 text-gray-900">
       <div className="max-w-xl mx-auto bg-white p-6 rounded-xl shadow">
-        {/* FIX IS BELOW: Replaced -> with &rarr; */}
         <h1 className="text-2xl font-bold mb-6">Web Scraper &rarr; PDF</h1>
         
         <div className="space-y-4">
-          <input 
-            className="w-full p-2 border rounded"
-            placeholder="Start URL (e.g. https://example.com)"
-            value={url} onChange={e => setUrl(e.target.value)}
-          />
-          <div className="flex gap-2">
+          <div>
+            <label className="block text-xs font-semibold uppercase text-gray-500 mb-1">Target URL</label>
             <input 
-              className="flex-1 p-2 border rounded"
-              placeholder="Filename"
-              value={filename} onChange={e => setFilename(e.target.value)}
+              className="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500 outline-none"
+              placeholder="https://example.com/article"
+              value={url} onChange={e => setUrl(e.target.value)}
             />
-            <input 
-              type="number"
-              className="w-20 p-2 border rounded"
-              value={max} onChange={e => setMax(+e.target.value)}
-            />
+          </div>
+          
+          <div className="flex gap-4">
+            <div className="flex-1">
+              <label className="block text-xs font-semibold uppercase text-gray-500 mb-1">File Name</label>
+              <input 
+                className="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500 outline-none"
+                placeholder="my-research"
+                value={filename} onChange={e => setFilename(e.target.value)}
+              />
+            </div>
+            
+            <div className="w-24">
+              <label className="block text-xs font-semibold uppercase text-gray-500 mb-1">Limit</label>
+              <input 
+                type="number"
+                className="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500 outline-none"
+                placeholder="Pages"
+                value={max} onChange={e => setMax(+e.target.value)}
+              />
+            </div>
           </div>
           
           <button 
             onClick={run} disabled={loading}
-            className="w-full bg-blue-600 text-white p-2 rounded hover:bg-blue-700 disabled:bg-gray-400"
+            className="w-full bg-blue-600 text-white font-semibold py-3 rounded hover:bg-blue-700 disabled:bg-gray-400 transition-colors"
           >
-            {loading ? 'Working...' : 'Scrape & Download'}
+            {loading ? 'Working...' : 'Scrape & Download PDF'}
           </button>
         </div>
 
-        <div className="mt-6 p-4 bg-black text-green-400 font-mono text-xs h-48 overflow-auto rounded">
-          {logs.map((l, i) => <div key={i}>{l}</div>)}
+        <div className="mt-6 p-4 bg-gray-900 text-green-400 font-mono text-xs h-48 overflow-y-auto rounded shadow-inner">
+          {logs.length === 0 && <span className="text-gray-600">Waiting for input...</span>}
+          {logs.map((l, i) => <div key={i} className="mb-1">{l}</div>)}
         </div>
       </div>
     </main>
