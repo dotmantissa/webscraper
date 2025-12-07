@@ -39,11 +39,11 @@ export default function Home() {
 
         if (res.ok) {
           const data = await res.json();
-          // Only save if content is substantial
-          if (data.content?.length > 100) {
+          // Logic: If content is empty or super short, skip it
+          if (data.content && data.content.length > 50) {
             results.push({ url: current, title: data.title, content: data.content });
             visited.add(current);
-            log(`✅ Got: ${data.title.slice(0, 20)}...`);
+            log(`✅ Saved: ${data.title.slice(0, 20)}...`);
             
             data.links.forEach((l: string) => {
               if (!visited.has(l)) queue.push(l);
@@ -69,7 +69,6 @@ export default function Home() {
   const createPDF = (pages: PageData[]) => {
     const doc = new jsPDF();
     
-    // Formatting Constants
     const margin = 20;
     const pageWidth = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();
@@ -79,69 +78,65 @@ export default function Home() {
     let y = margin;
 
     pages.forEach((p, i) => {
-      // Add new page for every article (except the first one)
+      // New Page for each article (except the first)
       if (i > 0) { 
         doc.addPage(); 
         y = margin; 
       }
       
-      // --- HEADER SECTION ---
-
-      // Title (Centered, Bold, Larger)
-      doc.setFontSize(18);
+      // --- HEADER ---
+      doc.setFontSize(16);
       doc.setFont('helvetica', 'bold');
-      doc.setTextColor(0, 0, 0); // Black
+      doc.setTextColor(0, 0, 0);
       
       const titleLines = doc.splitTextToSize(p.title, contentWidth);
       doc.text(titleLines, centerX, y, { align: 'center' });
       y += (titleLines.length * 8) + 2;
 
-      // Link (Centered, Italic, Grey, Smaller)
-      doc.setFontSize(10);
+      doc.setFontSize(9);
       doc.setFont('helvetica', 'italic');
-      doc.setTextColor(100, 100, 100); // Grey
+      doc.setTextColor(100, 100, 100);
       doc.text(p.url, centerX, y, { align: 'center' });
       y += 10;
 
-      // Divider Line
-      doc.setDrawColor(200, 200, 200);
+      doc.setDrawColor(220, 220, 220);
       doc.line(margin, y, pageWidth - margin, y);
       y += 15;
 
-      // --- BODY CONTENT SECTION ---
-      
-      doc.setFontSize(11); // Standard reading size
+      // --- BODY ---
+      doc.setFontSize(11); 
       doc.setFont('helvetica', 'normal');
       doc.setTextColor(0, 0, 0);
 
-      // 1. Clean the text: Remove carriage returns, fix double spaces
-      const rawText = p.content.replace(/\r/g, '').replace(/  +/g, ' ');
-
-      // 2. Split by double newline to detect "Paragraphs"
-      const paragraphs = rawText.split(/\n\s*\n/);
+      // Split the text by the explicit double-newlines we added in the backend
+      const paragraphs = p.content.split('\n\n');
 
       paragraphs.forEach((paragraph) => {
-        // Skip empty paragraphs
-        if (!paragraph.trim()) return;
+        const cleanPara = paragraph.trim();
+        if (!cleanPara) return;
 
-        // Split paragraph into lines that fit the width
-        const lines = doc.splitTextToSize(paragraph, contentWidth);
-
-        // Check if this paragraph fits on the page
-        const paragraphHeight = lines.length * 6; // 6 is line height
+        // Detect if this is a header (we uppercased headers in backend)
+        const isHeader = cleanPara === cleanPara.toUpperCase() && cleanPara.length < 100 && !cleanPara.startsWith('•');
         
+        if (isHeader) {
+            doc.setFont('helvetica', 'bold');
+            y += 4; // Extra space before header
+        } else {
+            doc.setFont('helvetica', 'normal');
+        }
+
+        const lines = doc.splitTextToSize(cleanPara, contentWidth);
+        const paragraphHeight = lines.length * 5; // 5 is line height
+        
+        // Page Break Check
         if (y + paragraphHeight > pageHeight - margin) {
           doc.addPage();
           y = margin;
         }
 
-        // Write the lines
         doc.text(lines, margin, y);
-        
-        // Add height of text + extra spacing for the next paragraph
-        y += paragraphHeight + 4; 
+        y += paragraphHeight + 5; // 5 is the space BETWEEN paragraphs
       });
-
     });
 
     const safeFilename = filename.replace(/[^a-z0-9]/gi, '-').toLowerCase();
@@ -158,7 +153,7 @@ export default function Home() {
             <label className="block text-xs font-semibold uppercase text-gray-500 mb-1">Target URL</label>
             <input 
               className="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500 outline-none"
-              placeholder="https://example.com/article"
+              placeholder="https://..."
               value={url} onChange={e => setUrl(e.target.value)}
             />
           </div>
@@ -168,7 +163,6 @@ export default function Home() {
               <label className="block text-xs font-semibold uppercase text-gray-500 mb-1">File Name</label>
               <input 
                 className="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500 outline-none"
-                placeholder="my-research"
                 value={filename} onChange={e => setFilename(e.target.value)}
               />
             </div>
@@ -178,7 +172,6 @@ export default function Home() {
               <input 
                 type="number"
                 className="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500 outline-none"
-                placeholder="Pages"
                 value={max} onChange={e => setMax(+e.target.value)}
               />
             </div>
