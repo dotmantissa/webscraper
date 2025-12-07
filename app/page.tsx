@@ -99,7 +99,8 @@ export default function Home() {
   return (
     <main className="min-h-screen p-8 bg-gray-50 text-gray-900">
       <div className="max-w-xl mx-auto bg-white p-6 rounded-xl shadow">
-        <h1 className="text-2xl font-bold mb-6">Web Scraper -> PDF</h1>
+        {/* FIX IS BELOW: Replaced -> with &rarr; */}
+        <h1 className="text-2xl font-bold mb-6">Web Scraper &rarr; PDF</h1>
         
         <div className="space-y-4">
           <input 
