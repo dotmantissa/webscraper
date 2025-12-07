@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { jsPDF } from 'jspdf';
 
 type PageData = { url: string; title: string; content: string };
@@ -12,7 +12,15 @@ export default function Home() {
   const [logs, setLogs] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
 
+  // 1. Create a reference for the bottom of the logs
+  const logsEndRef = useRef<HTMLDivElement>(null);
+
   const log = (msg: string) => setLogs(p => [...p, msg]);
+
+  // 2. Auto-scroll effect: Runs every time 'logs' changes
+  useEffect(() => {
+    logsEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [logs]);
 
   const run = async () => {
     if (!url) return;
@@ -39,7 +47,6 @@ export default function Home() {
 
         if (res.ok) {
           const data = await res.json();
-          // Logic: If content is empty or super short, skip it
           if (data.content && data.content.length > 50) {
             results.push({ url: current, title: data.title, content: data.content });
             visited.add(current);
@@ -78,13 +85,12 @@ export default function Home() {
     let y = margin;
 
     pages.forEach((p, i) => {
-      // New Page for each article (except the first)
       if (i > 0) { 
         doc.addPage(); 
         y = margin; 
       }
       
-      // --- HEADER ---
+      // Header
       doc.setFontSize(16);
       doc.setFont('helvetica', 'bold');
       doc.setTextColor(0, 0, 0);
@@ -103,39 +109,36 @@ export default function Home() {
       doc.line(margin, y, pageWidth - margin, y);
       y += 15;
 
-      // --- BODY ---
+      // Body
       doc.setFontSize(11); 
       doc.setFont('helvetica', 'normal');
       doc.setTextColor(0, 0, 0);
 
-      // Split the text by the explicit double-newlines we added in the backend
       const paragraphs = p.content.split('\n\n');
 
       paragraphs.forEach((paragraph) => {
         const cleanPara = paragraph.trim();
         if (!cleanPara) return;
 
-        // Detect if this is a header (we uppercased headers in backend)
         const isHeader = cleanPara === cleanPara.toUpperCase() && cleanPara.length < 100 && !cleanPara.startsWith('•');
         
         if (isHeader) {
             doc.setFont('helvetica', 'bold');
-            y += 4; // Extra space before header
+            y += 4;
         } else {
             doc.setFont('helvetica', 'normal');
         }
 
         const lines = doc.splitTextToSize(cleanPara, contentWidth);
-        const paragraphHeight = lines.length * 5; // 5 is line height
+        const paragraphHeight = lines.length * 5; 
         
-        // Page Break Check
         if (y + paragraphHeight > pageHeight - margin) {
           doc.addPage();
           y = margin;
         }
 
         doc.text(lines, margin, y);
-        y += paragraphHeight + 5; // 5 is the space BETWEEN paragraphs
+        y += paragraphHeight + 5;
       });
     });
 
@@ -188,6 +191,9 @@ export default function Home() {
         <div className="mt-6 p-4 bg-gray-900 text-green-400 font-mono text-xs h-48 overflow-y-auto rounded shadow-inner">
           {logs.length === 0 && <span className="text-gray-600">Waiting for input...</span>}
           {logs.map((l, i) => <div key={i} className="mb-1">{l}</div>)}
+          
+          {/* 3. The Invisible Anchor Element */}
+          <div ref={logsEndRef} />
         </div>
       </div>
     </main>
